@@ -99,6 +99,9 @@ type Project struct {
 	// The timeout in seconds for Vite server detection. Default 10
 	ViteServerTimeout int `json:"viteServerTimeout"`
 
+	// The timeout in seconds to wait for graceful application shutdown, Default 10
+	ShutdownTimeout int `json:"shutdownTimeout"`
+
 	Bindings Bindings `json:"bindings"`
 }
 

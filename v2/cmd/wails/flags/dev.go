@@ -32,6 +32,7 @@ type Dev struct {
 	Save                 bool   `flag:"save" description:"Save the given flags as defaults"`
 	FrontendDevServerURL string `flag:"frontenddevserverurl" description:"The url of the external frontend dev server to use"`
 	ViteServerTimeout    int    `flag:"viteservertimeout" description:"The timeout in seconds for Vite server detection (default: 10)"`
+	ShutdownTimeout      int    `flag:"shutdowntimeout" description:"The timeout in seconds to wait for graceful shutdown (default: 10)"`
 
 	// Internal state
 	devServerURL  *url.URL
@@ -112,6 +113,13 @@ func (d *Dev) loadAndMergeProjectConfig() error {
 		d.ViteServerTimeout = 10 // Default timeout
 	}
 	d.projectConfig.ViteServerTimeout = d.ViteServerTimeout
+
+	if d.ShutdownTimeout == 0 && d.projectConfig.ShutdownTimeout != 0 {
+		d.ShutdownTimeout = d.projectConfig.ShutdownTimeout
+	} else if d.ShutdownTimeout == 0 {
+		d.ShutdownTimeout = 10 // Default timeout
+	}
+	d.projectConfig.ShutdownTimeout = d.ShutdownTimeout
 
 	if d.Save {
 		err = d.projectConfig.Save()

@@ -132,8 +132,8 @@ func Application(f *flags.Dev, logger *clilogger.CLILogger) error {
 		return err
 	}
 	defer func() {
-		if err := killProcessAndCleanupBinary(debugBinaryProcess, appBinary); err != nil {
-			logutils.LogDarkYellow("Unable to kill process and cleanup binary: %s", err)
+		if err := stopProcessAndCleanupBinary(debugBinaryProcess, appBinary, quitChannel, projectConfig.ShutdownTimeout); err != nil {
+			logutils.LogDarkYellow("Unable to stop process and cleanup binary: %s", err)
 		}
 	}()
 
@@ -164,7 +164,7 @@ func Application(f *flags.Dev, logger *clilogger.CLILogger) error {
 	}
 
 	// Kill the current program if running and remove dev binary
-	if err := killProcessAndCleanupBinary(debugBinaryProcess, appBinary); err != nil {
+	if err := stopProcessAndCleanupBinary(debugBinaryProcess, appBinary, quitChannel, projectConfig.ShutdownTimeout); err != nil {
 		return err
 	}
 
@@ -177,11 +177,10 @@ func Application(f *flags.Dev, logger *clilogger.CLILogger) error {
 	return nil
 }
 
-func killProcessAndCleanupBinary(process *process.Process, binary string) error {
-	if process != nil && process.Running {
-		if err := process.Kill(); err != nil {
-			return err
-		}
+// stopProcessAndCleanupBinary will stop the app and cleanup the binary.
+func stopProcessAndCleanupBinary(process *process.Process, binary string, quitChannel <-chan os.Signal, shutdownTimeout int) error {
+	if err := stopApp(process, quitChannel, shutdownTimeout); err != nil {
+		return err
 	}
 
 	if binary != "" {
@@ -516,6 +515,34 @@ func doWatcherLoop(cwd string, reloadDirs string, buildOptions *build.Options, d
 		}
 	}
 	return debugBinaryProcess, nil
+}
+
+// stopApp attempts to wait for the app to gracefully shutdown. If it takes
+// longer than the shutdownTimeout to stop a kill signal is sent to terminate
+// the process.
+func stopApp(process *process.Process, quitChannel <-chan os.Signal, shutdownTimeout int) error {
+	if process == nil || !process.Running {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(shutdownTimeout))
+	defer cancel()
+	go func() {
+		// Cancel the timer if a quit signal is received.
+		<-quitChannel
+		cancel()
+	}()
+
+	logutils.LogGreen("Stopping app, waiting for process to stop...")
+	if err := process.Stop(); err != nil {
+		return fmt.Errorf("error stopping app: %w", err)
+	}
+
+	if err := process.KillWait(ctx); err != nil {
+		return fmt.Errorf("error killing app: %w", err)
+	}
+
+	return nil
 }
 
 func joinPath(url *url.URL, subPath string) string {

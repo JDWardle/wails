@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"os"
 	"os/exec"
 )
@@ -8,7 +9,7 @@ import (
 // Process defines a process that can be executed
 type Process struct {
 	cmd         *exec.Cmd
-	exitChannel chan bool
+	exitChannel chan struct{}
 	Running     bool
 }
 
@@ -16,7 +17,7 @@ type Process struct {
 func NewProcess(cmd string, args ...string) *Process {
 	result := &Process{
 		cmd:         exec.Command(cmd, args...),
-		exitChannel: make(chan bool, 1),
+		exitChannel: make(chan struct{}),
 	}
 	result.cmd.Stdout = os.Stdout
 	result.cmd.Stderr = os.Stderr
@@ -32,14 +33,15 @@ func (p *Process) Start(exitCodeChannel chan int) error {
 
 	p.Running = true
 
-	go func(cmd *exec.Cmd, running *bool, exitChannel chan bool, exitCodeChannel chan int) {
+	go func(cmd *exec.Cmd, running *bool, exitCodeChannel chan int) {
+		defer close(p.exitChannel)
+
 		err := cmd.Wait()
 		if err == nil {
 			exitCodeChannel <- 0
 		}
 		*running = false
-		exitChannel <- true
-	}(p.cmd, &p.Running, p.exitChannel, exitCodeChannel)
+	}(p.cmd, &p.Running, exitCodeChannel)
 
 	return nil
 }
@@ -58,10 +60,19 @@ func (p *Process) Kill() error {
 		return err
 	}
 
-	// Wait for command to exit properly
-	<-p.exitChannel
-
 	return err
+}
+
+// KillWait kills the process once the provided context is canceled. If the
+// process terminates while waiting this returns early without error.
+func (p *Process) KillWait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+	case <-p.exitChannel:
+		return nil
+	}
+
+	return p.Kill()
 }
 
 // PID returns the process PID
