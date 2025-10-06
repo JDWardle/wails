@@ -111,3 +111,5 @@ require (
 	howett.net/plist v1.0.0 // indirect
 	mvdan.cc/sh/v3 v3.7.0 // indirect
 )
+
+replace github.com/wailsapp/wails/v2 => /home/jesse/dev/github.com/JDWardle/wails/v2
